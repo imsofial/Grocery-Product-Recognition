@@ -73,7 +73,7 @@ Grocery-Product-Recognition/
 │   ├── val/                 # Validation set
 │   └── test/                # Test set
 │
-├── raw_dataset/             # Raw (unprocessed) data
+├── raw_dataset/             # Raw (unprocessed) data - ignored for saving memory
 │
 ├── count_images.py          # Script to count the number of images per class/subclass
 ├── prepare_dataset.py       # Script to preprocess and split the dataset
