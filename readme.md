@@ -53,3 +53,93 @@ Additionally, if a recipe requires extra ingredients, the system can **suggest c
 3. Spoiled items are filtered out.
 4. A recipe is suggested based on available products.
 5. Missing ingredients are recommended for shopping.
+
+ ---
+## Project Structure
+
+```
+
+Grocery-Product-Recognition/
+│
+├── dataset_prepared/        # Dataset ready for training
+│   ├── train/               # Training set
+│   │   ├── apple/           # Class: apples
+│   │   │   ├── fresh/       # Subclass: fresh apples
+│   │   │   └── rotten/      # Subclass: rotten apples
+│   │   ├── banana/          # Class: bananas
+│   │   ├── orange/          # ...
+│   │   ├── potato/          
+│   │   └── tomato/          
+│   ├── val/                 # Validation set
+│   └── test/                # Test set
+│
+├── raw_dataset/             # Raw (unprocessed) data
+│
+├── count_images.py          # Script to count the number of images per class/subclass
+├── prepare_dataset.py       # Script to preprocess and split the dataset
+└── README.md                # Project documentation
+
+````
+
+
+
+## Scripts
+
+### 1. `prepare_dataset.py`
+Prepares the dataset for training:
+- Reads raw images from `raw_dataset/`
+- Splits them into `train/`, `val/`, and `test/`
+- Organizes images into `fresh/` and `rotten/` subfolders for each class
+
+**Run:**
+```bash
+python prepare_dataset.py
+````
+
+---
+
+### 2. `count_images.py`
+
+Counts the number of images in each class and subclass inside `dataset_prepared/`.
+
+**Run:**
+
+```bash
+python count_images.py
+```
+
+Output example:
+
+```
+train
+apple/fresh: 857 photos
+apple/rotten: 868 photos
+banana/fresh: 972 photos
+banana/rotten: 906 photos
+orange/fresh: 935 photos
+orange/rotten: 917 photos
+potato/fresh: 802 photos
+potato/rotten: 956 photos
+tomato/fresh: 868 photos
+tomato/rotten: 912 photos
+
+val
+apple/fresh: 183 photos
+apple/rotten: 186 photos
+banana/fresh: 208 photos
+banana/rotten: 194 photos
+orange/fresh: 200 photos 
+   ...
+```
+
+---
+
+## Dataset Notes
+
+* All images should be placed in `raw_dataset/` before preprocessing.
+* After running `prepare_dataset.py`, the `dataset_prepared/` folder will be automatically generated and ready for model training.
+
+
+
+
+
