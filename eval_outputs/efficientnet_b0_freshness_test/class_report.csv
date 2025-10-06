@@ -1,0 +1,4 @@
+class,precision,recall,f1,support
+fresh,0.4300,0.3606,0.3922,954
+rotten,0.4630,0.5356,0.4967,982
+accuracy,,,0.4494,1936

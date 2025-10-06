@@ -1,0 +1,10 @@
+{
+  "best_val_acc": 0.984919396775871,
+  "classes": [
+    "apple",
+    "banana",
+    "orange",
+    "potato",
+    "tomato"
+  ]
+}

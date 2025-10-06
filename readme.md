@@ -55,6 +55,28 @@ Additionally, if a recipe requires extra ingredients, the system can **suggest c
 5. Missing ingredients are recommended for shopping.
 
  ---
+
+ ## 🧪 What works now
+
+Cleaned and prepared dataset (duplicates removed, 70/15/15 split, 224×224).
+
+Baseline evaluations:
+
+Fruit identity (5-class)
+
+EfficientNet-B0 — 97.57% test accuracy (n=1936)
+
+ResNet50 — 98.45% test accuracy (n=1936)
+
+Freshness (2-class) (harder task; needs more curation/augs)
+
+EfficientNet-B0 — 44.94% test accuracy
+
+ResNet50 — 50.10% test accuracy
+
+(Fruit recognition is basically solved on our distribution; freshness requires better data/augs and light fine-tuning.)
+
+
 ## Project Structure
 
 ```
@@ -77,6 +99,14 @@ Grocery-Product-Recognition/
 │
 ├── count_images.py          # Script to count the number of images per class/subclass
 ├── prepare_dataset.py       # Script to preprocess and split the dataset
+|
+├── eval_torchvision.py    # 5-class FRUIT evaluation
+│
+├── eval_freshness.py      # 2-class FRESH vs ROTTEN evaluation
+│
+├── train_linear_probe.py  # quick head-only training
+|
+├── eval_outputs/          # Saved metrics, confusion matrices, summaries (created after runs)
 └── README.md                # Project documentation
 
 ````
@@ -138,6 +168,94 @@ orange/fresh: 200 photos
 
 * All images should be placed in `raw_dataset/` before preprocessing.
 * After running `prepare_dataset.py`, the `dataset_prepared/` folder will be automatically generated and ready for model training.
+
+## 📊 Evaluation
+
+###  A) Fruit Identity (5-class)
+
+Predict which fruit it is:
+`apple | banana | orange | potato | tomato`
+
+```bash
+# EfficientNet-B0
+python scripts/eval_torchvision.py \
+  --data dataset_prepared --split test --model efficientnet_b0 --outdir eval_outputs
+
+# ResNet50
+python scripts/eval_torchvision.py \
+  --data dataset_prepared --split test --model resnet50 --outdir eval_outputs
+```
+
+**Outputs** (in `eval_outputs/<model>_test/`):
+
+* `summary.json` — overall accuracy, number of samples, class names
+* `class_report.csv` — per-class precision / recall / F1
+* `confusion_matrix.png` — visual confusion matrix
+* `preds.npy`, `probs.npy`, `targets.npy` — raw arrays for further analysis
+
+**Latest results:**
+
+| Model           | Test Accuracy | Samples |
+| :-------------- | :-----------: | :-----: |
+| EfficientNet-B0 |  **97.57 %**  |   1936  |
+| ResNet50        |  **98.45 %**  |   1936  |
+
+---
+
+### B) Freshness (2-class)
+
+Binary task: `fresh | rotten`
+(Fruit identity ignored; label comes from second-level folder names.)
+
+```bash
+# EfficientNet-B0
+python scripts/eval_freshness.py \
+  --data dataset_prepared --split test --model efficientnet_b0 --outdir eval_outputs
+
+# ResNet50
+python scripts/eval_freshness.py \
+  --data dataset_prepared --split test --model resnet50 --outdir eval_outputs
+```
+
+**Latest results:**
+
+| Model           | Test Accuracy |
+| :-------------- | :-----------: |
+| EfficientNet-B0 |  **44.94 %**  |
+| ResNet50        |  **50.10 %**  |
+
+
+---
+
+### Quick “Linear Probe” (Train Head Only)
+
+Use this when you have only ImageNet weights — it quickly trains just the classifier head, often boosting accuracy dramatically.
+
+```bash
+# Train head on fruit 5-class (freeze backbone)
+python scripts/train_linear_probe.py \
+  --data dataset_prepared --model efficientnet_b0 --epochs 5
+
+# Then evaluate on test with the saved checkpoint
+python scripts/eval_torchvision.py \
+  --data dataset_prepared --split test --model efficientnet_b0 \
+  --ckpt checkpoints/efficientnet_b0_linear_probe_best.pth
+```
+
+You can do the same for ResNet:
+
+```bash
+python scripts/train_linear_probe.py \
+  --data dataset_prepared --model resnet50 --epochs 5
+```
+
+## 👥 Team
+
+* **Ekaterina Akimenko** — Evaluation pipeline, binary freshness evaluation, reporting
+* **Sofia Goryunova** — Model development / fine-tuning
+* **Yasmina Mamadalieva** — Data sourcing/curation, docs
+
+---
 
 
 

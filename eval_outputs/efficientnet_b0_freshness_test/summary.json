@@ -1,0 +1,9 @@
+{
+  "accuracy": 0.4493801652892562,
+  "elapsed_sec": 32.78805613517761,
+  "num_samples": 1936,
+  "classes": [
+    "fresh",
+    "rotten"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "accuracy": 0.984504132231405,
+  "elapsed_sec": 71.85894894599915,
+  "num_samples": 1936,
+  "classes": [
+    "apple",
+    "banana",
+    "orange",
+    "potato",
+    "tomato"
+  ]
+}
