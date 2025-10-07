@@ -7,9 +7,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+from google.colab import files, drive
 
 
-DATA_DIRECTORY="dataset_prepared"
+
+DATA_DIRECTORY = "/content/dataset_prepared/dataset_prepared"
 train_directory = DATA_DIRECTORY + "/train"
 test_directory = DATA_DIRECTORY + "/test"
 val_directory = DATA_DIRECTORY + "/val"
@@ -64,8 +66,7 @@ class FruitConditionDataset(Dataset):
             image = self.transform(image)
         return image, label
     
-    import os
-data_root = "dataset_prepared/test"
+data_root = test_directory
 
 label2id = {}
 counter = 0
@@ -83,13 +84,13 @@ print(len(label2id))
 
 
 train_dataset = FruitConditionDataset(
-    root_dir="dataset_prepared/train",
+    root_dir=train_directory,
     transform=data_transforms['train'],
     label2id=label2id
 )
 
 val_dataset = FruitConditionDataset(
-    root_dir="dataset_prepared/val",
+    root_dir=val_directory,
     transform=data_transforms['val'],
     label2id=label2id
 )
@@ -100,16 +101,25 @@ train_loader = DataLoader(train_dataset, batch_size, shuffle=True, num_workers=2
 val_loader = DataLoader(val_dataset, batch_size, shuffle=False, num_workers=2)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-num_classes = 10
-save_path = 'models/efficientnet_fruits.pth'  # where we store model 
+num_classes = len(label2id)
+save_path = '/content/drive/MyDrive/fruit_model/efficientnet_fruits.pth' # where we store model
+os.makedirs(os.path.dirname(save_path), exist_ok=True)
 
 def get_model(num_classes, pretrained=True):
     """
     Creates EfficientNet B3 and changes classifier to num_classes
     """
     model = create_model('efficientnet_b3', pretrained=pretrained)
+
+    for param in model.parameters():
+        param.requires_grad = False
+
     in_features = model.classifier.in_features
     model.classifier = nn.Linear(in_features, num_classes)
+
+    for param in model.classifier.parameters():
+        param.requires_grad = True
+
     return model.to(device)
 
 def train_model(model, train_loader, val_loader, num_epochs=5, lr=1e-4):
