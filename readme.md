@@ -74,6 +74,8 @@ EfficientNet-B0 — 44.94% test accuracy
 
 ResNet50 — 50.10% test accuracy
 
+EfficientNet-B3 (Fine-tuned) — 81.82% validation accuracy 
+
 (Fruit recognition is basically solved on our distribution; freshness requires better data/augs and light fine-tuning.)
 
 
@@ -130,8 +132,6 @@ Prepares the dataset for training:
 ```bash
 python prepare_dataset.py
 ````
-
----
 
 ### 2. `count_images.py`
 
