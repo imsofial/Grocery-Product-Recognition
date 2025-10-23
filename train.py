@@ -17,22 +17,22 @@ test_directory = DATA_DIRECTORY + "/test"
 val_directory = DATA_DIRECTORY + "/val"
 
 data_transforms = {
-        'train': transforms.Compose([
-            transforms.RandomRotation(30),
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], 
-                                [0.229, 0.224, 0.225])
-        ]),
-        'val': transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485, 0.456, 0.406], 
-                                [0.229, 0.224, 0.225])
-        ])
-    }
+    'train': transforms.Compose([
+        transforms.RandomRotation(30),
+        transforms.RandomResizedCrop(224),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], 
+                            [0.229, 0.224, 0.225])
+    ]),
+    'val': transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize([0.485, 0.456, 0.406], 
+                            [0.229, 0.224, 0.225])
+    ])
+}
 
 
 class FruitConditionDataset(Dataset):
@@ -68,19 +68,7 @@ class FruitConditionDataset(Dataset):
     
 data_root = test_directory
 
-label2id = {}
-counter = 0
-
-for fruit in os.listdir(data_root):
-    fruit_path = os.path.join(data_root, fruit)
-    if not os.path.isdir(fruit_path):
-        continue
-    for condition in os.listdir(fruit_path):
-        label = f"{fruit}/{condition}"
-        label2id[label] = counter
-        counter += 1
-
-print(len(label2id))
+label2id = {'apple/fresh': 0, 'apple/rotten': 1, 'banana/fresh': 2, 'banana/rotten': 3, 'orange/fresh': 4, 'orange/rotten': 5, 'potato/fresh': 6, 'potato/rotten': 7, 'tomato/fresh': 8, 'tomato/rotten': 9}
 
 
 train_dataset = FruitConditionDataset(
