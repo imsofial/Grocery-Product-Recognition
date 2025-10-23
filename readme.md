@@ -74,6 +74,8 @@ EfficientNet-B0 — 44.94% test accuracy
 
 ResNet50 — 50.10% test accuracy
 
+EfficientNet-B3 (Fine-tuned) — 81.82% validation accuracy 
+
 (Fruit recognition is basically solved on our distribution; freshness requires better data/augs and light fine-tuning.)
 
 
@@ -97,16 +99,21 @@ Grocery-Product-Recognition/
 │
 ├── raw_dataset/             # Raw (unprocessed) data - ignored for saving memory
 │
+├── eval_outputs/          # Saved metrics, confusion matrices, summaries (created after runs)
+|
+├── fruit_model/           # Folder for model weights savings
+|
 ├── count_images.py          # Script to count the number of images per class/subclass
 ├── prepare_dataset.py       # Script to preprocess and split the dataset
 |
 ├── eval_torchvision.py    # 5-class FRUIT evaluation
-│
 ├── eval_freshness.py      # 2-class FRESH vs ROTTEN evaluation
 │
 ├── train_linear_probe.py  # quick head-only training
 |
-├── eval_outputs/          # Saved metrics, confusion matrices, summaries (created after runs)
+├── train.py               # Script for training
+├── train.ipynb            # Jupyter Notebook (was runed in Google Colab) 
+│  
 └── README.md                # Project documentation
 
 ````
@@ -125,8 +132,6 @@ Prepares the dataset for training:
 ```bash
 python prepare_dataset.py
 ````
-
----
 
 ### 2. `count_images.py`
 
@@ -160,6 +165,16 @@ banana/fresh: 208 photos
 banana/rotten: 194 photos
 orange/fresh: 200 photos 
    ...
+```
+
+### 3. `train.py`
+
+Starts train loop with fine-tuning of EfficientNet b3 model to classify fresh/rotten groccery products.
+
+**Run:**
+
+```bash
+python train.py
 ```
 
 ---
