@@ -101,18 +101,23 @@ Grocery-Product-Recognition/
 │
 ├── eval_outputs/          # Saved metrics, confusion matrices, summaries (created after runs)
 |
-├── fruit_model/           # Folder for model weights savings
+├── finetuned_models/       # Folder for model weights savings
 |
 ├── count_images.py          # Script to count the number of images per class/subclass
 ├── prepare_dataset.py       # Script to preprocess and split the dataset
 |
-├── eval_torchvision.py    # 5-class FRUIT evaluation
-├── eval_freshness.py      # 2-class FRESH vs ROTTEN evaluation
-│
-├── train_linear_probe.py  # quick head-only training
 |
-├── train.py               # Script for training
-├── train.ipynb            # Jupyter Notebook (was runed in Google Colab) 
+├── evaluation_scripts/
+│   ├── eval_torchvision.py                 # 5-class FRUIT evaluation
+│   ├── eval_freshness.py                   # 2-class FRESH vs ROTTEN evaluation
+│   ├── evaluate_finetuned_efficientnet.py  # 10-class FRUIT & FRESHNESS evaluation for EfficientNet_b0 and EfficientNet_b3 models 
+│   └── evaluate_finetuned_resnet.py        # 10-class FRUIT & FRESHNESS evaluation for ResNet50 model
+│
+├── train_scripts/
+│   ├── train_linear_probe.py  # quick head-only training
+│   ├── train_efficientnet.py  # train pipeline for efficientnet_b0 and efficientnet_b3
+│   ├── resnet50_train.py      # train pipeline for resnet50 
+|
 │  
 └── README.md                # Project documentation
 
@@ -167,14 +172,15 @@ orange/fresh: 200 photos
    ...
 ```
 
-### 3. `train.py`
+### 3. `resnet50_train.py` and `train_efficientnet.py`
 
-Starts train loop with fine-tuning of EfficientNet b3 model to classify fresh/rotten groccery products.
+Starts train loop with fine-tuning of EfficientNet_b0/EfficientNet_b3/ResNet50 model to classify fresh/rotten groccery products.
 
 **Run:**
 
 ```bash
-python train.py
+python train_scripts/resnet50_train.py
+python train_scripts/train_efficientnet.py
 ```
 
 ---
@@ -239,6 +245,17 @@ python scripts/eval_freshness.py \
 | EfficientNet-B0 |  **44.94 %**  |
 | ResNet50        |  **50.10 %**  |
 
+### C) Fruit Identity and Freshness (10-class)
+
+Predict if fruit belong one of categories:
+`apple/fresh | apple/rotten | banana/fresh | banana/rotten | orange/fresh | orange/rotten | potato/fresh | potato/rotten | tomato/fresh | tomato/rotten`
+
+**Latest results:**
+| Model           | Test Accuracy |
+| :-------------- | :-----------: |
+| EfficientNet-B0 |  **80.05 %**  |
+| EfficientNet-B3 |  **83.51 %**  |
+| ResNet50        |  **89.35 %**  |
 
 ---
 
@@ -267,7 +284,7 @@ python scripts/train_linear_probe.py \
 ## 👥 Team
 
 * **Ekaterina Akimenko** — Evaluation pipeline, binary freshness evaluation, reporting
-* **Sofia Goryunova** — Model development / fine-tuning
+* **Sofia Goryunova** — Model development / fine-tuning / models evaluation
 * **Yasmina Mamadalieva** — Data sourcing/curation, docs
 
 ---
