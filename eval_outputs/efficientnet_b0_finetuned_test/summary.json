@@ -1,0 +1,18 @@
+{
+  "accuracy": 0.8005167958656331,
+  "elapsed_sec": 44.64664316177368,
+  "num_samples": 1935,
+  "num_classes": 10,
+  "classes": [
+    "apple/fresh",
+    "apple/rotten",
+    "banana/fresh",
+    "banana/rotten",
+    "orange/fresh",
+    "orange/rotten",
+    "potato/fresh",
+    "potato/rotten",
+    "tomato/fresh",
+    "tomato/rotten"
+  ]
+}

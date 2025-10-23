@@ -1,0 +1,12 @@
+class,precision,recall,f1,support
+apple/fresh,0.8364,0.9676,0.8972,185
+apple/rotten,0.8726,0.7366,0.7988,186
+banana/fresh,0.9665,0.9665,0.9665,209
+banana/rotten,0.9497,0.9742,0.9618,194
+orange/fresh,0.9052,0.9502,0.9272,201
+orange/rotten,0.9235,0.8535,0.8871,198
+potato/fresh,0.8889,0.8324,0.8597,173
+potato/rotten,0.8702,0.8786,0.8744,206
+tomato/fresh,0.8462,0.9462,0.8934,186
+tomato/rotten,0.8750,0.8173,0.8451,197
+accuracy,,,0.8935,1935
