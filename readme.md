@@ -118,6 +118,10 @@ Grocery-Product-Recognition/
 │   ├── train_efficientnet.py  # train pipeline for efficientnet_b0 and efficientnet_b3
 │   ├── resnet50_train.py      # train pipeline for resnet50 
 |
+├── app.py # streamlit code for diplaying results
+|
+├── recipe_api.py # streamlit code for diplaying results
+|
 │  
 └── README.md                # Project documentation
 
@@ -280,6 +284,76 @@ You can do the same for ResNet:
 python scripts/train_linear_probe.py \
   --data dataset_prepared --model resnet50 --epochs 5
 ```
+---
+
+## 🌐 Live Demo (Streamlit)
+
+- **App:** here will be link when deployed
+
+The Streamlit app lets you:
+- Upload a photo.
+- Get a **joint prediction** (`fruit/freshness`, e.g., `apple/fresh`).
+- See extracted **Fruit** and **Freshness** separately.
+- Click **Get recipes for this fruit** to fetch recipes via our `recipe_api.py` (ThemealDB).  
+  Recipes are shown as cards and saved to `recipes.json`.
+
+### What it does
+- Loads **ResNet50 (10-class)** fine-tuned weights from `finetuned_models/resnet50_fruits.pth`.
+- Predicts **fruit** and **freshness** from a single image (joint classes):
+
+
+## 🍽️ Recipe API
+
+This project includes a lightweight wrapper around **TheMealDB** to fetch recipes by ingredient and save them locally as JSON. The Streamlit app calls this module after recognizing the **fruit** (e.g., `apple`) and displays the results as recipe cards.
+
+### File
+
+```
+recipe_api.py
+```
+
+### Function
+
+```python
+def get_recipes_by_ingredient(ingredient: str, category_filter: str = "Dessert") -> str:
+    """
+    Calls TheMealDB, filters by category, saves up to 5 recipes into recipes.json.
+    Returns a status message (string).
+    """
+```
+
+**Parameters**
+
+* `ingredient` — the ingredient to search by (e.g., `"apple"`, `"banana"`).
+* `category_filter` — optional category filter (default: `"Dessert"`).
+  You can change it in the Streamlit UI.
+
+**Behavior**
+
+* Queries TheMealDB: `https://www.themealdb.com/api/json/v1/1/search.php?s=<ingredient>`
+* Filters results to `category_filter` (case-insensitive).
+* Extracts fields and writes them into `recipes.json`.
+
+**Output JSON schema (`recipes.json`)**
+
+```json
+[
+  {
+    "name": "Apple Frangipan Tart",
+    "category": "Dessert",
+    "area": "British",
+    "ingredients": [
+      "Apple — 2",
+      "Butter — 75g",
+      "Caster Sugar — 75g"
+    ],
+    "instructions": "Preheat the oven to ...",
+    "image": "https://www.themealdb.com/images/media/meals/wxywrq1468235067.jpg"
+  }
+]
+```
+
+> The Streamlit UI reads this `recipes.json` file after the button click and renders each recipe as a card with image, category, area, ingredients, and collapsible instructions. It also exposes a **Download recipes.json** button.
 
 ## 👥 Team
 
