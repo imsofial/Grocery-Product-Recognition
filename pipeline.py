@@ -25,13 +25,6 @@ label2id = {
 }
 id2label = {v: k for k, v in label2id.items()}
 
-# -------- GLOBAL MODELS ----------
-DETECTOR = None
-RESNET_MODEL = None
-TRANSFORM = None
-DEVICE = "cpu"
-# ---------------------------------------------------------------
-
 
 class Detector:
     def __init__(self, model_path="yolov8n.pt"):
@@ -51,6 +44,7 @@ class Detector:
                 cls_id = int(box.cls.cpu().numpy())
                 out.append((xmin, ymin, xmax, ymax, conf_score, cls_id))
         return out
+
 
 
 def crop_boxes_from_image(image, boxes, pad=6):
@@ -88,6 +82,13 @@ def get_resnet_transform(size=224):
         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
 
+
+# -------- GLOBAL MODELS ----------
+DETECTOR = Detector("yolov8n.pt") 
+RESNET_MODEL = load_finetuned_resnet(10)
+TRANSFORM = get_resnet_transform()
+DEVICE = "cpu"
+# ---------------------------------------------------------------
 
 @torch.no_grad()
 def predict_batch_with_model(crops, topk=1):
@@ -130,11 +131,44 @@ def _read_recipes_json_if_exists():
     except:
         return []
 
+def filter_overlapping_boxes(boxes, iou_threshold=0.5):
+    if len(boxes) <= 1:
+        return boxes
+
+    # boxes: [(xmin, ymin, xmax, ymax, conf, cls_id), ...]
+    boxes = sorted(boxes, key=lambda x: x[4], reverse=True)
+    filtered = []
+
+    for box in boxes:
+        keep = True
+        for f in filtered:
+            # compute IoU
+            xA = max(box[0], f[0])
+            yA = max(box[1], f[1])
+            xB = min(box[2], f[2])
+            yB = min(box[3], f[3])
+
+            inter = max(0, xB - xA) * max(0, yB - yA)
+            box_area = (box[2] - box[0]) * (box[3] - box[1])
+            f_area = (f[2] - f[0]) * (f[3] - f[1])
+            union = box_area + f_area - inter
+
+            iou = inter / union if union > 0 else 0
+            if iou > iou_threshold:
+                keep = False
+                break
+
+        if keep:
+            filtered.append(box)
+
+    return filtered
+
 
 def full_pipeline(image_path, category="Dessert", topk=1):
     img = Image.open(image_path).convert("RGB")
 
     dets = DETECTOR.detect(img)
+    dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
     if len(dets) == 0:
         return {"detections": [], "recipes": []}
 
