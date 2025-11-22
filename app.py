@@ -1,192 +1,249 @@
 # app.py
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, Any
+from tempfile import NamedTemporaryFile
 import json
 
 import streamlit as st
-import torch
-import torchvision
-from PIL import Image
-from torchvision import transforms as T
 
-# <-- NEW: import your recipe module
-import recipe_api  # expects recipe_api.py in the same folder
+from pipeline import detect_and_classify_image, ULTRALYTICS_AVAILABLE
+from recipe_api import get_recipes_by_ingredient_raw
+from PIL import Image, ImageDraw, ImageFont
+
 
 # -----------------------------
 # Basic page setup
 # -----------------------------
 st.set_page_config(page_title="Grocery Recognition", layout="centered")
 st.title("Grocery Product Recognition")
-st.caption("Upload a photo → predict fruit + freshness → fetch and display recipes for that fruit.")
+st.caption(
+    "Upload a photo → detect multiple groceries → classify fruit + freshness → "
+    "optionally fetch recipes for all detected fruits."
+)
 
-# -----------------------------
-# Constants
-# -----------------------------
-IMAGENET_MEAN = [0.485, 0.456, 0.406]
-IMAGENET_STD  = [0.229, 0.224, 0.225]
 
-# Joint 10-class labels (MUST match your training order)
-JOINT_CLASSES = [
-    "apple/fresh", "apple/rotten",
-    "banana/fresh", "banana/rotten",
-    "orange/fresh", "orange/rotten",
-    "potato/fresh", "potato/rotten",
-    "tomato/fresh", "tomato/rotten",
-]
-
-DEFAULT_CKPT = "finetuned_models/resnet50_fruits.pth"
-
-# -----------------------------
-# Helpers
-# -----------------------------
-def load_image(file) -> Image.Image:
-    return Image.open(file).convert("RGB")
-
-def preprocess(img: Image.Image, img_size: int = 224) -> torch.Tensor:
-    tfm = T.Compose([
-        T.Resize(256),
-        T.CenterCrop(img_size),
-        T.ToTensor(),
-        T.Normalize(IMAGENET_MEAN, IMAGENET_STD),
-    ])
-    return tfm(img)
-
-def predict_top1(model: torch.nn.Module, device: str, x: torch.Tensor, class_names: List[str]) -> Tuple[str, float]:
-    with torch.no_grad():
-        logits = model(x.to(device))
-        probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
-    idx = int(probs.argmax())
-    return class_names[idx], float(probs[idx])
-
-def parse_fruit_and_freshness(joint_label: str) -> Tuple[str, str]:
-    # supports "/" or "\" separators
-    if "/" in joint_label:
-        fruit, state = joint_label.split("/", 1)
-    elif "\\" in joint_label:
-        fruit, state = joint_label.split("\\", 1)
+def parse_label(label: str):
+    """
+    'apple/fresh' -> ('apple', 'fresh')
+    """
+    if "/" in label:
+        fruit, state = label.split("/", 1)
+    elif "\\" in label:
+        fruit, state = label.split("\\", 1)
     else:
-        fruit, state = joint_label, "unknown"
+        fruit, state = label, "unknown"
     return fruit, state
 
-def load_checkpoint_flex(model: torch.nn.Module, ckpt_path: str):
-    state = torch.load(ckpt_path, map_location="cpu")
-    if isinstance(state, dict):
-        sd = state.get("state_dict", state.get("model_state", state))
-    else:
-        sd = state
-    missing, unexpected = model.load_state_dict(sd, strict=False)
-    return missing, unexpected
+
+def draw_boxes(image: Image.Image, detections):
+    """
+    Draw rectangles and labels on a copy of the image.
+    detections: list of dicts with "box" and "label".
+    """
+    img = image.copy()
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.load_default()
+
+    for det in detections:
+        box = det.get("box")
+        label = det.get("label", "")
+        score = det.get("score", 0.0)
+
+        if not box:
+            continue
+
+        x0, y0, x1, y1 = box
+        # rectangle
+        draw.rectangle((x0, y0, x1, y1), outline="red", width=3)
+
+        # label text
+        text = f"{label} ({score*100:.1f}%)"
+
+        # Get text size using textbbox (works in new Pillow)
+        try:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_w = bbox[2] - bbox[0]
+            text_h = bbox[3] - bbox[1]
+        except AttributeError:
+            # Fallback for very old Pillow versions
+            text_w, text_h = font.getsize(text)
+
+        # small background rect for text
+        # put it slightly above the box (if there's space), otherwise inside
+        text_x0 = x0
+        text_y0 = max(0, y0 - text_h - 4)
+        text_x1 = text_x0 + text_w + 4
+        text_y1 = text_y0 + text_h + 4
+
+        draw.rectangle((text_x0, text_y0, text_x1, text_y1), fill="red")
+        draw.text((text_x0 + 2, text_y0 + 2), text, fill="white", font=font)
+
+    return img
+
 
 # -----------------------------
 # Sidebar
 # -----------------------------
 with st.sidebar:
     st.header("Settings")
-    ckpt_path = st.text_input("Checkpoint (.pth)", value=DEFAULT_CKPT)
-    img_size  = st.slider("Image size (CenterCrop)", 128, 512, 224, step=16)
+
+    if not ULTRALYTICS_AVAILABLE:
+        st.error(
+            "Ultralytics YOLO is not installed.\n\n"
+            "Install with: `pip install ultralytics` in your .venv and restart the app."
+        )
+
+    # Predefined TheMealDB categories
+    CATEGORY_OPTIONS = [
+        "Any",        # new: no category filtering
+        "Dessert",
+        "Breakfast",
+        "Beef",
+        "Chicken",
+        "Goat",
+        "Lamb",
+        "Miscellaneous",
+        "Pasta",
+        "Pork",
+        "Seafood",
+        "Side",
+        "Starter",
+        "Vegan",
+        "Vegetarian",
+    ]
+
+    category_filter = st.selectbox(
+        "Recipe category (TheMealDB)",
+        options=CATEGORY_OPTIONS,
+        index=0,  # default = "Any"
+        help='Choose "Any" for all categories, or a specific one like "Dessert", "Seafood", etc.',
+    )
+
+    st.markdown("---")
+    st.caption(
+        "Models used in the pipeline:\n"
+        "- YOLOv8n for detection\n"
+        "- ResNet50 (10 classes: fruit × freshness) for classification"
+    )
+
 
 # -----------------------------
-# Model (lazy-load, robust)
+# Main UI
 # -----------------------------
-@st.cache_resource(show_spinner=False)
-def build_model(num_classes: int, ckpt_path: str):
-    m = torchvision.models.resnet50(weights="IMAGENET1K_V2")
-    m.fc = torch.nn.Linear(m.fc.in_features, num_classes)
-
-    p = Path(ckpt_path)
-    if not p.exists():
-        return None, f"Checkpoint not found: {ckpt_path}", None
-
-    missing, unexpected = load_checkpoint_flex(m, ckpt_path)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    m.eval().to(device)
-    info = f"Model ready. missing={len(missing)}, unexpected={len(unexpected)} (strict=False)."
-    return m, None, info
-
-model, model_err, model_info = build_model(len(JOINT_CLASSES), ckpt_path)
-
 st.subheader("Upload an image")
-file = st.file_uploader("JPG/PNG/WEBP/BMP", type=["jpg", "jpeg", "png", "webp", "bmp"])
+file = st.file_uploader(
+    "Upload a photo of your fridge / bag (JPG/PNG/WEBP/BMP)",
+    type=["jpg", "jpeg", "png", "webp", "bmp"],
+)
 
-if model_err:
-    st.warning(f"⚠️ {model_err}")
-elif model_info:
-    st.caption(model_info)
-
-# -----------------------------
-# Main prediction
-# -----------------------------
 if file is None:
-    st.info("Upload an image to get a prediction.")
+    st.info("Upload an image to run detection and (optionally) recipes.")
 else:
-    img = load_image(file)
-    st.image(img, caption=file.name, use_column_width=True)
+    # Load and show original image
+    img = Image.open(file).convert("RGB")
+    st.image(img, caption=file.name, use_container_width=True)
 
-    if model is None:
-        st.error("Model not loaded. Fix the checkpoint path in the sidebar.")
+    if not ULTRALYTICS_AVAILABLE:
+        st.warning("Detection is disabled because ultralytics is not installed.")
     else:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        x = preprocess(img, img_size=img_size).unsqueeze(0)
-        top1_joint, top1_prob = predict_top1(model, device, x, JOINT_CLASSES)
-        fruit, state = parse_fruit_and_freshness(top1_joint)
-
-        st.markdown("### Result")
-        st.write(f"**Fruit:** `{fruit}`")
-        st.write(f"**Freshness:** `{state}`")
-        st.write(f"**Confidence:** {top1_prob*100:.2f}%")
-        st.caption(f"(Joint class: `{top1_joint}`)")
-
         st.divider()
-        st.markdown("### Recipes")
-        st.caption("Click to fetch up to 5 recipes for the detected fruit (Dessert category by default).")
+        st.markdown("### Detection & Classification")
 
-        # Let user change the category filter if desired
-        category = st.text_input("Category filter", value="Dessert")
+        with st.spinner("Running YOLO detection + ResNet classification..."):
+            result: Dict[str, Any] = detect_and_classify_image(img, topk=1)
 
-        if st.button(f"Get recipes for **{fruit}**"):
-            with st.spinner("Requesting recipes..."):
-                # Call your recipe API function (this writes recipes.json)
-                msg = recipe_api.get_recipes_by_ingredient(fruit, category_filter=category)
+        detections = result.get("detections", [])
+        counts = result.get("counts", {})
+        ingredients = result.get("ingredients", [])
 
-            st.success(msg)
+        if len(detections) == 0:
+            st.warning("No objects detected on the image.")
+        else:
+            # 1) Show annotated image with boxes + labels
+            annotated = draw_boxes(img, detections)
+            st.image(
+                annotated,
+                caption="Detected objects with predicted fruit/freshness",
+                use_container_width=True,
+            )
 
-            # Try to read recipes.json and display nicely
-            json_path = Path("recipes.json")
-            if json_path.exists():
-                try:
-                    data = json.loads(json_path.read_text(encoding="utf-8"))
-                    if isinstance(data, list) and len(data) > 0:
-                        st.markdown("#### Results")
-                        for rec in data:
-                            with st.container(border=True):
-                                # Title + image
-                                st.subheader(rec.get("name", ""))
-                                if rec.get("image"):
-                                    st.image(rec["image"], use_column_width=True)
-                                # Meta
-                                st.write(f"**Category:** {rec.get('category','')}")
-                                st.write(f"**Area:** {rec.get('area','')}")
-                                # Ingredients
-                                ings = rec.get("ingredients", [])
-                                if ings:
-                                    st.markdown("**Ingredients:**")
-                                    for line in ings:
-                                        st.write(f"- {line}")
-                                # Instructions (collapsible)
-                                instr = rec.get("instructions", "")
-                                if instr:
-                                    with st.expander("Instructions"):
-                                        st.write(instr)
-                        # Offer download of the JSON the function produced
-                        st.download_button(
-                            label="Download recipes.json",
-                            data=json.dumps(data, indent=2, ensure_ascii=False),
-                            file_name="recipes.json",
-                            mime="application/json"
-                        )
-                    else:
-                        st.info("No recipes found in recipes.json.")
-                except Exception as e:
-                    st.warning(f"Could not parse recipes.json: {e}")
+            # 2) Show summary counts
+            st.markdown("#### Detected items (summary)")
+            for label, c in counts.items():
+                fruit, state = parse_label(label)
+                st.write(f"- **{fruit}** ({state}) × **{c}**")
+
+            # 3) Per-object details
+            st.markdown("#### Per-object predictions")
+            for i, det in enumerate(detections, start=1):
+                label = det.get("label", "")
+                score = det.get("score", 0.0)
+                fruit, state = parse_label(label)
+                with st.container(border=True):
+                    st.write(f"**Object #{i}**")
+                    st.write(f"- Label: `{label}`")
+                    st.write(f"- Fruit: `{fruit}`")
+                    st.write(f"- Freshness: `{state}`")
+                    st.write(f"- Confidence (ResNet): {score * 100:.2f}%")
+                    st.write(f"- Detection conf (YOLO): {det.get('det_conf', 0.0) * 100:.2f}%")
+
+            st.divider()
+            st.markdown("### Recipes for detected fruits")
+
+            if not ingredients:
+                st.info("No fruits recognized, so no recipes to fetch.")
             else:
-                st.info("recipes.json not found after the call.")
+                st.write(
+                    "Detected fruits (ignoring freshness): "
+                    + ", ".join(f"`{ing}`" for ing in ingredients)
+                )
+
+                # 🔘 Only fetch recipes on button press
+                if st.button("Get recipes for all detected fruits"):
+                    combined_recipes = []
+
+                    with st.spinner("Fetching recipes from TheMealDB..."):
+                        for ingr in ingredients:
+                            st.markdown(f"#### Recipes for **{ingr}**")
+                            recs = get_recipes_by_ingredient_raw(
+                                ingr, category_filter=category_filter
+                            )
+
+                            if isinstance(recs, str):
+                                # Error / not found message
+                                st.info(recs)
+                                continue
+
+                            if not recs:
+                                st.info(f"No recipes found for '{ingr}'.")
+                                continue
+
+                            for rec in recs:
+                                combined_recipes.append(rec)
+                                with st.container(border=True):
+                                    st.subheader(rec.get("name", ""))
+
+                                    if rec.get("image"):
+                                        st.image(rec["image"], use_container_width=True)
+
+                                    st.write(f"**Category:** {rec.get('category', '')}")
+                                    st.write(f"**Area:** {rec.get('area', '')}")
+
+                                    ings = rec.get("ingredients", [])
+                                    if ings:
+                                        st.markdown("**Ingredients:**")
+                                        for line in ings:
+                                            st.write(f"- {line}")
+
+                                    instr = rec.get("instructions", "")
+                                    if instr:
+                                        with st.expander("Instructions"):
+                                            st.write(instr)
+
+                    if combined_recipes:
+                        st.download_button(
+                            label="Download all recipes as JSON",
+                            data=json.dumps(combined_recipes, indent=2, ensure_ascii=False),
+                            file_name="all_recipes.json",
+                            mime="application/json",
+                        )

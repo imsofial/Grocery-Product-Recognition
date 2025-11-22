@@ -187,3 +187,43 @@ def full_pipeline(image_path, category="Dessert", topk=1):
         recipes[ingr] = existing or msg
 
     return {"detections": per, "counts": counts, "recipes": recipes}
+
+def detect_and_classify_image(image: Image.Image, topk: int = 1) -> Dict[str, Any]:
+    """
+    Run YOLO detection + ResNet classification on a PIL image.
+    Returns:
+      {
+        "detections": [
+            {"label": "apple/fresh", "score": 0.97, "box": (x0, y0, x1, y1), "det_conf": 0.88},
+            ...
+        ],
+        "counts": Counter({"apple/fresh": 2, ...}),
+        "ingredients": ["apple", "banana", ...]  # unique fruit names
+      }
+    """
+    dets = DETECTOR.detect(image)
+    dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
+
+    if len(dets) == 0:
+        return {"detections": [], "counts": Counter(), "ingredients": []}
+
+    # Get pure boxes (without conf/class) for cropping
+    boxes = [(x0, y0, x1, y1) for (x0, y0, x1, y1, _, _) in dets]
+    crops = crop_boxes_from_image(image, boxes)
+
+    topk_idx, topk_scores, _ = predict_batch_with_model(crops, topk)
+    counts, per = aggregate_predictions(topk_idx, topk_scores)
+
+    # Attach box + detection confidence to each prediction
+    for det_dict, (x0, y0, x1, y1, det_conf, _cls_id) in zip(per, dets):
+        det_dict["box"] = (x0, y0, x1, y1)
+        det_dict["det_conf"] = float(det_conf)
+
+    # Fruit names only (apple, banana, ...)
+    ingredients = sorted({lbl.split("/")[0] for lbl in counts})
+
+    return {
+        "detections": per,
+        "counts": counts,
+        "ingredients": ingredients,
+    }
