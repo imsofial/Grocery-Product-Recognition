@@ -215,7 +215,7 @@ def detect_and_classify_image(image: Image.Image, topk: int = 1) -> Dict[str, An
         "ingredients": ["apple", "banana", ...]  # unique fruit names
       }
     """
-    dets = DETECTOR.detect(image)
+    dets = DETECTOR.predict(image)
     dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
 
     if len(dets) == 0:
