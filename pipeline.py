@@ -9,11 +9,11 @@ import torch.nn as nn
 from torchvision import transforms, models
 from recipe_api import get_recipes_by_ingredient
 
-try:
-    from ultralytics import YOLO
-    ULTRALYTICS_AVAILABLE = True
-except Exception:
-    ULTRALYTICS_AVAILABLE = False
+# try:
+#     from ultralytics import YOLO
+#     ULTRALYTICS_AVAILABLE = True
+# except Exception:
+#     ULTRALYTICS_AVAILABLE = False
 
 
 label2id = {
@@ -26,24 +26,24 @@ label2id = {
 id2label = {v: k for k, v in label2id.items()}
 
 
-class Detector:
-    def __init__(self, model_path="yolov8n.pt"):
-        if not ULTRALYTICS_AVAILABLE:
-            raise RuntimeError("ultralytics not installed")
-        self.model = YOLO(model_path)
+# class Detector:
+#     def __init__(self, model_path="yolov8n.pt"):
+#         if not ULTRALYTICS_AVAILABLE:
+#             raise RuntimeError("ultralytics not installed")
+#         self.model = YOLO(model_path)
 
-    def detect(self, image: Image.Image, conf=0.25, iou=0.45, imgsz=640):
-        results = self.model.predict(source=np.array(image), conf=conf, iou=iou, imgsz=imgsz)
-        out = []
-        for r in results:
-            boxes = getattr(r, "boxes", [])
-            for box in boxes:
-                xyxy = box.xyxy.cpu().numpy().reshape(-1)
-                xmin, ymin, xmax, ymax = [int(x) for x in xyxy[:4]]
-                conf_score = float(box.conf.cpu().numpy())
-                cls_id = int(box.cls.cpu().numpy())
-                out.append((xmin, ymin, xmax, ymax, conf_score, cls_id))
-        return out
+#     def detect(self, image: Image.Image, conf=0.25, iou=0.45, imgsz=640):
+#         results = self.model.predict(source=np.array(image), conf=conf, iou=iou, imgsz=imgsz)
+#         out = []
+#         for r in results:
+#             boxes = getattr(r, "boxes", [])
+#             for box in boxes:
+#                 xyxy = box.xyxy.cpu().numpy().reshape(-1)
+#                 xmin, ymin, xmax, ymax = [int(x) for x in xyxy[:4]]
+#                 conf_score = float(box.conf.cpu().numpy())
+#                 cls_id = int(box.cls.cpu().numpy())
+#                 out.append((xmin, ymin, xmax, ymax, conf_score, cls_id))
+#         return out
 
 
 
@@ -84,11 +84,25 @@ def get_resnet_transform(size=224):
 
 
 # -------- GLOBAL MODELS ----------
+DETECTOR = None
 RESNET_MODEL = load_finetuned_resnet(10)
 TRANSFORM = get_resnet_transform()
 DEVICE = "cpu"
 # ---------------------------------------------------------------
 
+def get_detector(model_path="yolov8n.pt"):
+    global DETECTOR
+    if DETECTOR is None:
+        try:
+            from ultralytics import YOLO
+        except ImportError:
+            raise RuntimeError(
+                "Ultralytics YOLO is not installed. "
+                "Install with `pip install ultralytics` and restart the app."
+            )
+        DETECTOR = YOLO(model_path)
+    return DETECTOR
+    
 @torch.no_grad()
 def predict_batch_with_model(crops, topk=1):
     if len(crops) == 0:
@@ -166,7 +180,7 @@ def filter_overlapping_boxes(boxes, iou_threshold=0.5):
 def full_pipeline(image_path, category="Dessert", topk=1):
     img = Image.open(image_path).convert("RGB")
 
-    DETECTOR = Detector()
+    DETECTOR = get_detector()
     dets = DETECTOR.detect(img)
     dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
     if len(dets) == 0:
