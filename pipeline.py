@@ -84,7 +84,6 @@ def get_resnet_transform(size=224):
 
 
 # -------- GLOBAL MODELS ----------
-DETECTOR = Detector("yolov8n.pt") 
 RESNET_MODEL = load_finetuned_resnet(10)
 TRANSFORM = get_resnet_transform()
 DEVICE = "cpu"
@@ -167,6 +166,7 @@ def filter_overlapping_boxes(boxes, iou_threshold=0.5):
 def full_pipeline(image_path, category="Dessert", topk=1):
     img = Image.open(image_path).convert("RGB")
 
+    DETECTOR = Detector()
     dets = DETECTOR.detect(img)
     dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
     if len(dets) == 0:
