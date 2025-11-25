@@ -143,107 +143,107 @@ else:
     img = Image.open(file).convert("RGB")
     st.image(img, caption=file.name, use_container_width=True)
 
-    if not ULTRALYTICS_AVAILABLE:
-        st.warning("Detection is disabled because ultralytics is not installed.")
+    # if not ULTRALYTICS_AVAILABLE:
+    #     st.warning("Detection is disabled because ultralytics is not installed.")
+    # else:
+    st.divider()
+    st.markdown("### Detection & Classification")
+
+    with st.spinner("Running YOLO detection + ResNet classification..."):
+        result: Dict[str, Any] = detect_and_classify_image(img, topk=1)
+
+    detections = result.get("detections", [])
+    counts = result.get("counts", {})
+    ingredients = result.get("ingredients", [])
+
+    if len(detections) == 0:
+        st.warning("No objects detected on the image.")
     else:
+        # 1) Show annotated image with boxes + labels
+        annotated = draw_boxes(img, detections)
+        st.image(
+            annotated,
+            caption="Detected objects with predicted fruit/freshness",
+            use_container_width=True,
+        )
+
+        # 2) Show summary counts
+        st.markdown("#### Detected items (summary)")
+        for label, c in counts.items():
+            fruit, state = parse_label(label)
+            st.write(f"- **{fruit}** ({state}) × **{c}**")
+
+        # 3) Per-object details
+        st.markdown("#### Per-object predictions")
+        for i, det in enumerate(detections, start=1):
+            label = det.get("label", "")
+            score = det.get("score", 0.0)
+            fruit, state = parse_label(label)
+            with st.container(border=True):
+                st.write(f"**Object #{i}**")
+                st.write(f"- Label: `{label}`")
+                st.write(f"- Fruit: `{fruit}`")
+                st.write(f"- Freshness: `{state}`")
+                st.write(f"- Confidence (ResNet): {score * 100:.2f}%")
+                st.write(f"- Detection conf (YOLO): {det.get('det_conf', 0.0) * 100:.2f}%")
+
         st.divider()
-        st.markdown("### Detection & Classification")
+        st.markdown("### Recipes for detected fruits")
 
-        with st.spinner("Running YOLO detection + ResNet classification..."):
-            result: Dict[str, Any] = detect_and_classify_image(img, topk=1)
-
-        detections = result.get("detections", [])
-        counts = result.get("counts", {})
-        ingredients = result.get("ingredients", [])
-
-        if len(detections) == 0:
-            st.warning("No objects detected on the image.")
+        if not ingredients:
+            st.info("No fruits recognized, so no recipes to fetch.")
         else:
-            # 1) Show annotated image with boxes + labels
-            annotated = draw_boxes(img, detections)
-            st.image(
-                annotated,
-                caption="Detected objects with predicted fruit/freshness",
-                use_container_width=True,
+            st.write(
+                "Detected fruits (ignoring freshness): "
+                + ", ".join(f"`{ing}`" for ing in ingredients)
             )
 
-            # 2) Show summary counts
-            st.markdown("#### Detected items (summary)")
-            for label, c in counts.items():
-                fruit, state = parse_label(label)
-                st.write(f"- **{fruit}** ({state}) × **{c}**")
+            # 🔘 Only fetch recipes on button press
+            if st.button("Get recipes for all detected fruits"):
+                combined_recipes = []
 
-            # 3) Per-object details
-            st.markdown("#### Per-object predictions")
-            for i, det in enumerate(detections, start=1):
-                label = det.get("label", "")
-                score = det.get("score", 0.0)
-                fruit, state = parse_label(label)
-                with st.container(border=True):
-                    st.write(f"**Object #{i}**")
-                    st.write(f"- Label: `{label}`")
-                    st.write(f"- Fruit: `{fruit}`")
-                    st.write(f"- Freshness: `{state}`")
-                    st.write(f"- Confidence (ResNet): {score * 100:.2f}%")
-                    st.write(f"- Detection conf (YOLO): {det.get('det_conf', 0.0) * 100:.2f}%")
-
-            st.divider()
-            st.markdown("### Recipes for detected fruits")
-
-            if not ingredients:
-                st.info("No fruits recognized, so no recipes to fetch.")
-            else:
-                st.write(
-                    "Detected fruits (ignoring freshness): "
-                    + ", ".join(f"`{ing}`" for ing in ingredients)
-                )
-
-                # 🔘 Only fetch recipes on button press
-                if st.button("Get recipes for all detected fruits"):
-                    combined_recipes = []
-
-                    with st.spinner("Fetching recipes from TheMealDB..."):
-                        for ingr in ingredients:
-                            st.markdown(f"#### Recipes for **{ingr}**")
-                            recs = get_recipes_by_ingredient_raw(
-                                ingr, category_filter=category_filter
-                            )
-
-                            if isinstance(recs, str):
-                                # Error / not found message
-                                st.info(recs)
-                                continue
-
-                            if not recs:
-                                st.info(f"No recipes found for '{ingr}'.")
-                                continue
-
-                            for rec in recs:
-                                combined_recipes.append(rec)
-                                with st.container(border=True):
-                                    st.subheader(rec.get("name", ""))
-
-                                    if rec.get("image"):
-                                        st.image(rec["image"], use_container_width=True)
-
-                                    st.write(f"**Category:** {rec.get('category', '')}")
-                                    st.write(f"**Area:** {rec.get('area', '')}")
-
-                                    ings = rec.get("ingredients", [])
-                                    if ings:
-                                        st.markdown("**Ingredients:**")
-                                        for line in ings:
-                                            st.write(f"- {line}")
-
-                                    instr = rec.get("instructions", "")
-                                    if instr:
-                                        with st.expander("Instructions"):
-                                            st.write(instr)
-
-                    if combined_recipes:
-                        st.download_button(
-                            label="Download all recipes as JSON",
-                            data=json.dumps(combined_recipes, indent=2, ensure_ascii=False),
-                            file_name="all_recipes.json",
-                            mime="application/json",
+                with st.spinner("Fetching recipes from TheMealDB..."):
+                    for ingr in ingredients:
+                        st.markdown(f"#### Recipes for **{ingr}**")
+                        recs = get_recipes_by_ingredient_raw(
+                            ingr, category_filter=category_filter
                         )
+
+                        if isinstance(recs, str):
+                            # Error / not found message
+                            st.info(recs)
+                            continue
+
+                        if not recs:
+                            st.info(f"No recipes found for '{ingr}'.")
+                            continue
+
+                        for rec in recs:
+                            combined_recipes.append(rec)
+                            with st.container(border=True):
+                                st.subheader(rec.get("name", ""))
+
+                                if rec.get("image"):
+                                    st.image(rec["image"], use_container_width=True)
+
+                                st.write(f"**Category:** {rec.get('category', '')}")
+                                st.write(f"**Area:** {rec.get('area', '')}")
+
+                                ings = rec.get("ingredients", [])
+                                if ings:
+                                    st.markdown("**Ingredients:**")
+                                    for line in ings:
+                                        st.write(f"- {line}")
+
+                                instr = rec.get("instructions", "")
+                                if instr:
+                                    with st.expander("Instructions"):
+                                        st.write(instr)
+
+                if combined_recipes:
+                    st.download_button(
+                        label="Download all recipes as JSON",
+                        data=json.dumps(combined_recipes, indent=2, ensure_ascii=False),
+                        file_name="all_recipes.json",
+                        mime="application/json",
+                    )
