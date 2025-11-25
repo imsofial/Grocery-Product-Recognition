@@ -6,7 +6,7 @@ import json
 
 import streamlit as st
 
-from pipeline import detect_and_classify_image, ULTRALYTICS_AVAILABLE
+from pipeline import detect_and_classify_image
 from recipe_api import get_recipes_by_ingredient_raw
 from PIL import Image, ImageDraw, ImageFont
 
@@ -87,11 +87,11 @@ def draw_boxes(image: Image.Image, detections):
 with st.sidebar:
     st.header("Settings")
 
-    if not ULTRALYTICS_AVAILABLE:
-        st.error(
-            "Ultralytics YOLO is not installed.\n\n"
-            "Install with: `pip install ultralytics` in your .venv and restart the app."
-        )
+    # if not ULTRALYTICS_AVAILABLE:
+    #     st.error(
+    #         "Ultralytics YOLO is not installed.\n\n"
+    #         "Install with: `pip install ultralytics` in your .venv and restart the app."
+    #     )
 
     # Predefined TheMealDB categories
     CATEGORY_OPTIONS = [
