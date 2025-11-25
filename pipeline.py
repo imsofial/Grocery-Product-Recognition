@@ -181,7 +181,7 @@ def full_pipeline(image_path, category="Dessert", topk=1):
     img = Image.open(image_path).convert("RGB")
 
     DETECTOR = get_detector()
-    dets = DETECTOR.detect(img)
+    dets = DETECTOR.predict(img)
     dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
     if len(dets) == 0:
         return {"detections": [], "recipes": []}
