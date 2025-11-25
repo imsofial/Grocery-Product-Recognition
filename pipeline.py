@@ -180,8 +180,8 @@ def filter_overlapping_boxes(boxes, iou_threshold=0.5):
 def full_pipeline(image_path, category="Dessert", topk=1):
     img = Image.open(image_path).convert("RGB")
 
-    DETECTOR = get_detector()
-    dets = DETECTOR.predict(img)
+    detector = get_detector() 
+    dets = detector.predict(img)
     dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
     if len(dets) == 0:
         return {"detections": [], "recipes": []}
@@ -215,7 +215,8 @@ def detect_and_classify_image(image: Image.Image, topk: int = 1) -> Dict[str, An
         "ingredients": ["apple", "banana", ...]  # unique fruit names
       }
     """
-    dets = DETECTOR.predict(image)
+    detector = get_detector() 
+    dets = detector.predict(image)
     dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
 
     if len(dets) == 0:
