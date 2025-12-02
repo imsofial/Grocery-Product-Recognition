@@ -2,52 +2,87 @@ from typing import List, Tuple, Dict, Any
 from collections import Counter
 from pathlib import Path
 import json
+
 import numpy as np
 from PIL import Image
 import torch
 import torch.nn as nn
 from torchvision import transforms, models
+
 from recipe_api import get_recipes_by_ingredient
 
-# try:
-#     from ultralytics import YOLO
-#     ULTRALYTICS_AVAILABLE = True
-# except Exception:
-#     ULTRALYTICS_AVAILABLE = False
 
-
+# ---------- Label mappings ----------
 label2id = {
-    'apple/fresh': 0, 'apple/rotten': 1,
-    'banana/fresh': 2, 'banana/rotten': 3,
-    'orange/fresh': 4, 'orange/rotten': 5,
-    'potato/fresh': 6, 'potato/rotten': 7,
-    'tomato/fresh': 8, 'tomato/rotten': 9
+    "apple/fresh": 0,
+    "apple/rotten": 1,
+    "banana/fresh": 2,
+    "banana/rotten": 3,
+    "orange/fresh": 4,
+    "orange/rotten": 5,
+    "potato/fresh": 6,
+    "potato/rotten": 7,
+    "tomato/fresh": 8,
+    "tomato/rotten": 9,
 }
 id2label = {v: k for k, v in label2id.items()}
 
 
-# class Detector:
-#     def __init__(self, model_path="yolov8n.pt"):
-#         if not ULTRALYTICS_AVAILABLE:
-#             raise RuntimeError("ultralytics not installed")
-#         self.model = YOLO(model_path)
+# ---------- YOLO DETECTOR WRAPPER ----------
+class Detector:
+    """
+    Thin wrapper around Ultralytics YOLO that returns a list of:
+      (xmin, ymin, xmax, ymax, conf, cls_id)
+    so the rest of the pipeline can stay simple.
+    """
 
-#     def detect(self, image: Image.Image, conf=0.25, iou=0.45, imgsz=640):
-#         results = self.model.predict(source=np.array(image), conf=conf, iou=iou, imgsz=imgsz)
-#         out = []
-#         for r in results:
-#             boxes = getattr(r, "boxes", [])
-#             for box in boxes:
-#                 xyxy = box.xyxy.cpu().numpy().reshape(-1)
-#                 xmin, ymin, xmax, ymax = [int(x) for x in xyxy[:4]]
-#                 conf_score = float(box.conf.cpu().numpy())
-#                 cls_id = int(box.cls.cpu().numpy())
-#                 out.append((xmin, ymin, xmax, ymax, conf_score, cls_id))
-#         return out
+    def __init__(self, model_path: str = "yolov8n.pt"):
+        try:
+            from ultralytics import YOLO
+        except ImportError:
+            raise RuntimeError(
+                "Ultralytics YOLO is not installed. "
+                "Install it with `pip install ultralytics` and restart the app."
+            )
+        # Save class so it's not GC'ed
+        self.YOLO = YOLO
+        # This will auto-download yolov8n.pt if it's not present locally
+        self.model = YOLO(model_path)
+
+    def detect(
+        self,
+        image: Image.Image,
+        conf: float = 0.25,
+        iou: float = 0.45,
+        imgsz: int = 640,
+    ) -> List[Tuple[int, int, int, int, float, int]]:
+        """
+        Run YOLO on a PIL image and return a list of:
+        (xmin, ymin, xmax, ymax, conf, cls_id)
+        """
+        # Convert PIL -> numpy for YOLO
+        results = self.model.predict(
+            source=np.array(image),
+            conf=conf,
+            iou=iou,
+            imgsz=imgsz,
+            verbose=False,
+        )
+
+        out = []
+        for r in results:
+            boxes = getattr(r, "boxes", [])
+            for box in boxes:
+                xyxy = box.xyxy.cpu().numpy().reshape(-1)
+                xmin, ymin, xmax, ymax = [int(x) for x in xyxy[:4]]
+                conf_score = float(box.conf.cpu().numpy())
+                cls_id = int(box.cls.cpu().numpy())
+                out.append((xmin, ymin, xmax, ymax, conf_score, cls_id))
+        return out
 
 
-
-def crop_boxes_from_image(image, boxes, pad=6):
+# ---------- Utility: cropping ----------
+def crop_boxes_from_image(image: Image.Image, boxes, pad: int = 6):
     w, h = image.size
     crops = []
     for (xmin, ymin, xmax, ymax) in boxes:
@@ -59,14 +94,27 @@ def crop_boxes_from_image(image, boxes, pad=6):
     return crops
 
 
-def load_finetuned_resnet(num_classes, device="cpu"):
+# ---------- Classification model (ResNet50) ----------
+def load_finetuned_resnet(num_classes: int, device: str = "cpu"):
+    """
+    Load your finetuned resnet50_fruits.pth checkpoint.
+    Expected path: finetuned_models/resnet50_fruits.pth
+    """
     model = models.resnet50(pretrained=False)
     model.fc = nn.Linear(model.fc.in_features, num_classes)
 
-    state = torch.load("finetuned_models/resnet50_fruits.pth",map_location=device)
+    ckpt_path = Path("finetuned_models/resnet50_fruits.pth")
+    if not ckpt_path.exists():
+        raise FileNotFoundError(
+            f"Checkpoint not found at {ckpt_path.resolve()}. "
+            "Make sure finetuned_models/resnet50_fruits.pth is present."
+        )
+
+    state = torch.load(str(ckpt_path), map_location=device)
     if "state_dict" in state:
         state = state["state_dict"]
 
+    # Remove 'module.' prefix if model was trained with DataParallel
     clean_state = {k.replace("module.", ""): v for k, v in state.items()}
     model.load_state_dict(clean_state, strict=False)
 
@@ -74,37 +122,40 @@ def load_finetuned_resnet(num_classes, device="cpu"):
     return model
 
 
-def get_resnet_transform(size=224):
-    return transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(size),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
+def get_resnet_transform(size: int = 224):
+    return transforms.Compose(
+        [
+            transforms.Resize(256),
+            transforms.CenterCrop(size),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                [0.485, 0.456, 0.406],
+                [0.229, 0.224, 0.225],
+            ),
+        ]
+    )
 
 
-# -------- GLOBAL MODELS ----------
-DETECTOR = None
-RESNET_MODEL = load_finetuned_resnet(10)
+# ---------- Globals ----------
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+DETECTOR: Detector | None = None
+RESNET_MODEL = load_finetuned_resnet(num_classes=10, device=DEVICE)
 TRANSFORM = get_resnet_transform()
-DEVICE = "cpu"
-# ---------------------------------------------------------------
 
-def get_detector(model_path="yolov8n.pt"):
+
+def get_detector(model_path: str = "yolov8n.pt") -> Detector:
+    """
+    Lazy-load a global Detector instance.
+    """
     global DETECTOR
     if DETECTOR is None:
-        try:
-            from ultralytics import YOLO
-        except ImportError:
-            raise RuntimeError(
-                "Ultralytics YOLO is not installed. "
-                "Install with `pip install ultralytics` and restart the app."
-            )
-        DETECTOR = YOLO(model_path)
+        DETECTOR = Detector(model_path=model_path)
     return DETECTOR
-    
+
+
+# ---------- Classification helpers ----------
 @torch.no_grad()
-def predict_batch_with_model(crops, topk=1):
+def predict_batch_with_model(crops: List[Image.Image], topk: int = 1):
     if len(crops) == 0:
         return np.zeros((0, topk)), np.zeros((0, topk)), None
 
@@ -121,6 +172,10 @@ def predict_batch_with_model(crops, topk=1):
 
 
 def aggregate_predictions(topk_idx, topk_scores):
+    """
+    Convert indices + scores into human-readable labels
+    and a Counter of label occurrences.
+    """
     per = []
     counts = Counter()
 
@@ -141,14 +196,19 @@ def _read_recipes_json_if_exists():
         return []
     try:
         return json.loads(p.read_text(encoding="utf-8"))
-    except:
+    except Exception:
         return []
 
-def filter_overlapping_boxes(boxes, iou_threshold=0.5):
+
+# ---------- NMS-like box filtering ----------
+def filter_overlapping_boxes(boxes, iou_threshold: float = 0.5):
+    """
+    Simple NMS: keep highest-confidence boxes, drop others if IoU > threshold.
+    boxes: [(xmin, ymin, xmax, ymax, conf, cls_id), ...]
+    """
     if len(boxes) <= 1:
         return boxes
 
-    # boxes: [(xmin, ymin, xmax, ymax, conf, cls_id), ...]
     boxes = sorted(boxes, key=lambda x: x[4], reverse=True)
     filtered = []
 
@@ -166,7 +226,7 @@ def filter_overlapping_boxes(boxes, iou_threshold=0.5):
             f_area = (f[2] - f[0]) * (f[3] - f[1])
             union = box_area + f_area - inter
 
-            iou = inter / union if union > 0 else 0
+            iou = inter / union if union > 0 else 0.0
             if iou > iou_threshold:
                 keep = False
                 break
@@ -177,11 +237,16 @@ def filter_overlapping_boxes(boxes, iou_threshold=0.5):
     return filtered
 
 
-def full_pipeline(image_path, category="Dessert", topk=1):
+# ---------- High-level pipelines ----------
+def full_pipeline(image_path, category: str = "Dessert", topk: int = 1):
+    """
+    Legacy full pipeline taking a path, including recipe-fetching.
+    Returns dict with detections + counts + recipes per ingredient.
+    """
     img = Image.open(image_path).convert("RGB")
 
-    detector = get_detector() 
-    dets = detector.predict(img)
+    detector = get_detector()
+    dets = detector.detect(img)
     dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
     if len(dets) == 0:
         return {"detections": [], "recipes": []}
@@ -202,39 +267,45 @@ def full_pipeline(image_path, category="Dessert", topk=1):
 
     return {"detections": per, "counts": counts, "recipes": recipes}
 
+
 def detect_and_classify_image(image: Image.Image, topk: int = 1) -> Dict[str, Any]:
     """
     Run YOLO detection + ResNet classification on a PIL image.
+
     Returns:
       {
         "detections": [
-            {"label": "apple/fresh", "score": 0.97, "box": (x0, y0, x1, y1), "det_conf": 0.88},
+            {
+              "label": "apple/fresh",
+              "score": 0.97,
+              "box": (x0, y0, x1, y1),
+              "det_conf": 0.88
+            },
             ...
         ],
         "counts": Counter({"apple/fresh": 2, ...}),
-        "ingredients": ["apple", "banana", ...]  # unique fruit names
+        "ingredients": ["apple", "banana", ...]
       }
     """
-    detector = get_detector() 
-    dets = detector.predict(image)
+    detector = get_detector()
+    dets = detector.detect(image)
     dets = filter_overlapping_boxes(dets, iou_threshold=0.6)
 
     if len(dets) == 0:
         return {"detections": [], "counts": Counter(), "ingredients": []}
 
-    # Get pure boxes (without conf/class) for cropping
+    # Boxes only for cropping
     boxes = [(x0, y0, x1, y1) for (x0, y0, x1, y1, _, _) in dets]
     crops = crop_boxes_from_image(image, boxes)
 
     topk_idx, topk_scores, _ = predict_batch_with_model(crops, topk)
     counts, per = aggregate_predictions(topk_idx, topk_scores)
 
-    # Attach box + detection confidence to each prediction
+    # Attach box + detection confidence
     for det_dict, (x0, y0, x1, y1, det_conf, _cls_id) in zip(per, dets):
         det_dict["box"] = (x0, y0, x1, y1)
         det_dict["det_conf"] = float(det_conf)
 
-    # Fruit names only (apple, banana, ...)
     ingredients = sorted({lbl.split("/")[0] for lbl in counts})
 
     return {
