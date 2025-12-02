@@ -5,4 +5,4 @@ pillow
 numpy
 scikit-learn
 matplotlib
-ultralytics==8.2.50
+requests
