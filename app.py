@@ -150,7 +150,11 @@ else:
     st.markdown("### Detection & Classification")
 
     with st.spinner("Running YOLO detection + ResNet classification..."):
-        result: Dict[str, Any] = detect_and_classify_image(img, topk=1)
+        try:
+            result: Dict[str, Any] = detect_and_classify_image(img, topk=1)
+        except Exception as e:
+            st.error(f"Detection pipeline error: {e}")
+            st.stop()
 
     detections = result.get("detections", [])
     counts = result.get("counts", {})
